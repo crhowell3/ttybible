@@ -1,0 +1,25 @@
+[package]
+name = "ttybible"
+version = "0.1.0"
+authors = ["Cameron Howell <me@crhowell.com>"]
+edition = "2024"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/crhowell3/ttybible"
+keywords = ["Bible", "TTY", "Terminal", "ESV"]
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic    = { level = "deny", priority = -1 }
+nursery     = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
+[[bin]]
+name = "bible"
+path = "src/main.rs"
+
+[dependencies]
+byteorder = "1.5.0"
+clap = { version = "4.6.0", features = ["derive"] }
