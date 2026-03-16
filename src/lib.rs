@@ -1,12 +1,12 @@
-use byteorder::{LittleEndian, ReadBytesExt};
+use byteorder::{ByteOrder, LittleEndian};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 
 pub mod cli;
 
+pub static BIBLE_DATA: &[u8] = include_bytes!("../data/bible.dat");
+
 pub struct Bible {
-    file: File,
+    data: &'static [u8],
     index: HashMap<(u8, u16, u16), VerseIndex>,
 }
 
@@ -17,67 +17,76 @@ struct VerseIndex {
 }
 
 impl Bible {
-    pub fn open(path: &str) -> std::io::Result<Self> {
-        let mut file = File::open(path)?;
-
-        let mut magic = [0u8; 4];
-        file.read_exact(&mut magic)?;
-
-        if &magic != b"BIBL" {
+    pub fn open() -> Self {
+        let data = BIBLE_DATA;
+        let mut pos = 0;
+        if &data[0..4] != b"BIBL" {
             panic!("Invalid bible file");
         }
+        pos += 4;
 
-        let _version = file.read_u16::<LittleEndian>()?;
-        let _book_count = file.read_u16::<LittleEndian>()?;
-        let verse_count = file.read_u32::<LittleEndian>()?;
-        let index_offset = file.read_u64::<LittleEndian>()?;
-        let _text_offset = file.read_u64::<LittleEndian>()?;
+        let _version = LittleEndian::read_u16(&data[pos..]);
+        pos += 2;
 
-        file.seek(SeekFrom::Start(index_offset))?;
+        let _book_count = LittleEndian::read_u16(&data[pos..]);
+        pos += 2;
+
+        let verse_count = LittleEndian::read_u32(&data[pos..]);
+        pos += 4;
+
+        let index_offset = LittleEndian::read_u64(&data[pos..]);
+        pos += 8;
+
+        let _text_offset = LittleEndian::read_u64(&data[pos..]);
 
         let mut index = HashMap::new();
 
+        let mut pos = index_offset as usize;
+
         for _ in 0..verse_count {
-            let book = file.read_u8()?;
-            let chapter = file.read_u16::<LittleEndian>()?;
-            let verse = file.read_u16::<LittleEndian>()?;
-            let offset = file.read_u64::<LittleEndian>()?;
-            let length = file.read_u32::<LittleEndian>()?;
+            let book = data[pos];
+            pos += 1;
+
+            let chapter = LittleEndian::read_u16(&data[pos..]);
+            pos += 2;
+
+            let verse = LittleEndian::read_u16(&data[pos..]);
+            pos += 2;
+
+            let offset = LittleEndian::read_u64(&data[pos..]);
+            pos += 8;
+
+            let length = LittleEndian::read_u32(&data[pos..]);
+            pos += 4;
 
             index.insert((book, chapter, verse), VerseIndex { offset, length });
         }
 
-        Ok(Self { file, index })
+        Self { data, index }
     }
 
-    pub fn get(&mut self, book: u8, chapter: u16, verse: u16) -> std::io::Result<String> {
+    pub fn get(&self, book: u8, chapter: u16, verse: u16) -> String {
         let idx = self
             .index
             .get(&(book, chapter, verse))
             .expect("verse not found");
 
-        self.file.seek(SeekFrom::Start(idx.offset))?;
+        let start = idx.offset as usize;
+        let end = start + idx.length as usize;
 
-        let mut buf = vec![0; idx.length as usize];
-        self.file.read_exact(&mut buf)?;
+        let slice = &self.data[start..end];
 
-        Ok(String::from_utf8(buf).unwrap())
+        std::str::from_utf8(slice).unwrap().to_string()
     }
 
-    pub fn get_range(
-        &mut self,
-        book: u8,
-        chapter: u16,
-        start: u16,
-        end: u16,
-    ) -> std::io::Result<Vec<String>> {
+    pub fn get_range(&self, book: u8, chapter: u16, start: u16, end: u16) -> Vec<String> {
         let mut verses = Vec::new();
 
         for v in start..=end {
-            verses.push(self.get(book, chapter, v)?);
+            verses.push(self.get(book, chapter, v));
         }
 
-        Ok(verses)
+        verses
     }
 }
 
