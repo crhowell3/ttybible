@@ -7,10 +7,11 @@ use ttybible::{
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let bible = Bible::open();
+    let bible = Bible::open()?;
 
     if cli.random {
-        bible.get_random_verse();
+        let verse = bible.get_random_verse()?;
+        println!("{verse}");
         return Ok(());
     }
 
@@ -18,11 +19,11 @@ fn main() -> anyhow::Result<()> {
     let provided_reference = cli.reference.context("Missing reference")?;
 
     let book_name = provided_book.join(" ");
-    let book_id = book_to_id(&book_name);
+    let book_id = book_to_id(&book_name)?;
 
     let reference = parse_reference(&provided_reference)?;
 
-    for verse in bible.get_range(book_id, reference.chapter, reference.start, reference.end) {
+    for verse in bible.get_range(book_id, reference.chapter, reference.start, reference.end)? {
         println!("{verse}");
     }
 
