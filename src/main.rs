@@ -20,7 +20,7 @@ fn main() -> anyhow::Result<()> {
     let book_name = provided_book.join(" ");
     let book_id = book_to_id(&book_name);
 
-    let reference = parse_reference(&provided_reference);
+    let reference = parse_reference(&provided_reference)?;
 
     for verse in bible.get_range(book_id, reference.chapter, reference.start, reference.end) {
         println!("{verse}");

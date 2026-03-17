@@ -1,4 +1,6 @@
+use anyhow::anyhow;
 use clap::Parser;
+use std::num::ParseIntError;
 
 use crate::VERSION_AND_GIT_HASH;
 
@@ -40,21 +42,32 @@ pub struct ParsedReference {
     pub end: u16,
 }
 
-pub fn parse_reference(reference: &str) -> ParsedReference {
-    let (chapter, verse_part) = reference.split_once(':').unwrap();
+pub fn parse_reference(reference: &str) -> anyhow::Result<ParsedReference> {
+    let (chapter, verse_part) = reference.split_once(':').ok_or_else(|| {
+        anyhow!("Invalid reference '{reference}'. Expected format <CHAPTER>:<VERSE>")
+    })?;
 
-    let chapter = chapter.parse().unwrap();
+    let chapter: u16 = chapter
+        .parse()
+        .map_err(|_: ParseIntError| anyhow!("Invalid chapter '{chapter}'"))?;
 
     let (start, end) = if let Some((a, b)) = verse_part.split_once('-') {
-        (a.parse().unwrap(), b.parse().unwrap())
+        let start: u16 = a.parse().map_err(|_| anyhow!("Invalid verse '{a}'"))?;
+
+        let end: u16 = b.parse().map_err(|_| anyhow!("Invalid verse '{b}'"))?;
+
+        (start, end)
     } else {
-        let v = verse_part.parse().unwrap();
+        let v = verse_part
+            .parse()
+            .map_err(|_| anyhow!("Invalid verse '{verse_part}'"))?;
+
         (v, v)
     };
 
-    ParsedReference {
+    Ok(ParsedReference {
         chapter,
         start,
         end,
-    }
+    })
 }
