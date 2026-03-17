@@ -42,6 +42,10 @@ pub struct ParsedReference {
     pub end: u16,
 }
 
+///
+/// # Errors
+/// - Will return an error if the chapter-verse(s) reference is ill-formed and unable to be parsed
+///
 pub fn parse_reference(reference: &str) -> anyhow::Result<ParsedReference> {
     let (chapter, verse_part) = reference.split_once(':').ok_or_else(|| {
         anyhow!("Invalid reference '{reference}'. Expected format <CHAPTER>:<VERSE>")

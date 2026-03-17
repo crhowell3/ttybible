@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use byteorder::{ByteOrder, LittleEndian};
 use rand::RngExt;
 use std::collections::HashMap;
@@ -20,12 +21,18 @@ struct VerseIndex {
 }
 
 impl Bible {
-    pub fn open() -> Self {
+    ///
+    /// # Errors
+    /// - Will return an error if `index_offset` cannot be converted to a `usize`
+    ///
+    /// # Panics
+    /// - Will panic if bible.dat's binary header is ill-formatted
+    ///
+    pub fn open() -> anyhow::Result<Self> {
         let data = BIBLE_DATA;
         let mut pos = 0;
-        if &data[0..4] != b"BIBL" {
-            panic!("Invalid bible file");
-        }
+        assert!(&data[0..4] == b"BIBL", "Invalid Bible binary encoding");
+
         pos += 4;
 
         let _version = LittleEndian::read_u16(&data[pos..]);
@@ -44,7 +51,7 @@ impl Bible {
 
         let mut index = HashMap::new();
 
-        let mut pos = index_offset as usize;
+        let mut pos = usize::try_from(index_offset)?;
 
         for _ in 0..verse_count {
             let book = data[pos];
@@ -65,33 +72,56 @@ impl Bible {
             index.insert((book, chapter, verse), VerseIndex { offset, length });
         }
 
-        Self { data, index }
+        Ok(Self { data, index })
     }
 
-    pub fn get(&self, book: u8, chapter: u16, verse: u16) -> String {
-        let Some(idx) = self.index.get(&(book, chapter, verse)) else {
-            return "Verse does not exist".to_string();
-        };
+    ///
+    /// # Errors
+    /// - Will return an error if hash map index lookup fails, `idx.offset` is unable to be
+    ///   converted to a `usize`, or the byte slice contains invalid UTF-8 encoding
+    ///
+    pub fn get(&self, book: u8, chapter: u16, verse: u16) -> anyhow::Result<String> {
+        let idx = self
+            .index
+            .get(&(book, chapter, verse))
+            .ok_or_else(|| anyhow!("Verse does not exist"))?;
 
-        let start = idx.offset as usize;
+        let start = usize::try_from(idx.offset)?;
         let end = start + idx.length as usize;
 
         let slice = &self.data[start..end];
 
-        std::str::from_utf8(slice).unwrap().to_string()
+        Ok(std::str::from_utf8(slice)
+            .map_err(|_| anyhow!("UTF-8 data possibly corrupted"))?
+            .to_string())
     }
 
-    pub fn get_range(&self, book: u8, chapter: u16, start: u16, end: u16) -> Vec<String> {
+    ///
+    /// # Errors
+    /// - Will return an error if `self.get()` returns an Error
+    ///
+    pub fn get_range(
+        &self,
+        book: u8,
+        chapter: u16,
+        start: u16,
+        end: u16,
+    ) -> anyhow::Result<Vec<String>> {
         let mut verses = Vec::new();
 
         for v in start..=end {
-            verses.push(self.get(book, chapter, v));
+            verses.push(self.get(book, chapter, v)?);
         }
 
-        verses
+        Ok(verses)
     }
 
-    pub fn get_random_verse(&self) {
+    ///
+    /// # Errors
+    /// - Will return an error if `self.get()` returns an Error or if `id_to_book`
+    ///   returns an Error (which should never happen)
+    ///
+    pub fn get_random_verse(&self) -> anyhow::Result<String> {
         let mut rng = rand::rng();
 
         let verses: Vec<_> = self.index.keys().collect();
@@ -100,154 +130,162 @@ impl Bible {
 
         let (book, chapter, verse) = verses[idx];
 
-        let text = self.get(*book, *chapter, *verse);
+        let text = self.get(*book, *chapter, *verse)?;
 
-        let book_name = id_to_book(*book);
+        let book_name = id_to_book(*book)?;
 
-        println!("{text}\n- {book_name} {chapter}:{verse}");
+        Ok(format!("{text}\n- {book_name} {chapter}:{verse}"))
     }
 }
 
-pub fn book_to_id(name: &str) -> u8 {
+///
+/// # Errors
+/// - Will return an error if a non-existent Bible book is provided
+///
+pub fn book_to_id(name: &str) -> anyhow::Result<u8> {
     match name.to_lowercase().as_str() {
-        "genesis" => 1,
-        "exodus" => 2,
-        "leviticus" => 3,
-        "numbers" => 4,
-        "deuteronomy" => 5,
-        "joshua" => 6,
-        "judges" => 7,
-        "ruth" => 8,
-        "1 samuel" => 9,
-        "2 samuel" => 10,
-        "1 kings" => 11,
-        "2 kings" => 12,
-        "1 chronicles" => 13,
-        "2 chronicles" => 14,
-        "ezra" => 15,
-        "nehemiah" => 16,
-        "esther" => 17,
-        "job" => 18,
-        "psalm" | "psalms" => 19,
-        "proverbs" => 20,
-        "ecclesiastes" => 21,
-        "song of songs" | "song of solomon" => 22,
-        "isaiah" => 23,
-        "jeremiah" => 24,
-        "lamentations" => 25,
-        "ezekiel" => 26,
-        "daniel" => 27,
-        "hosea" => 28,
-        "joel" => 29,
-        "amos" => 30,
-        "obadiah" => 31,
-        "jonah" => 32,
-        "micah" => 33,
-        "nahum" => 34,
-        "habakkuk" => 35,
-        "zephaniah" => 36,
-        "haggai" => 37,
-        "zechariah" => 38,
-        "malachi" => 39,
-        "matthew" => 40,
-        "mark" => 41,
-        "luke" => 42,
-        "john" => 43,
-        "acts" => 44,
-        "romans" => 45,
-        "1 corinthians" => 46,
-        "2 corinthians" => 47,
-        "galatians" => 48,
-        "ephesians" => 49,
-        "philippians" => 50,
-        "colossians" => 51,
-        "1 thessalonians" => 52,
-        "2 thessalonians" => 53,
-        "1 timothy" => 54,
-        "2 timothy" => 55,
-        "titus" => 56,
-        "philemon" => 57,
-        "hebrews" => 58,
-        "james" => 59,
-        "1 peter" => 60,
-        "2 peter" => 61,
-        "1 john" => 62,
-        "2 john" => 63,
-        "3 john" => 64,
-        "jude" => 65,
-        "revelation" => 66,
-        _ => panic!("Unknown book {name}"),
+        "genesis" => Ok(1),
+        "exodus" => Ok(2),
+        "leviticus" => Ok(3),
+        "numbers" => Ok(4),
+        "deuteronomy" => Ok(5),
+        "joshua" => Ok(6),
+        "judges" => Ok(7),
+        "ruth" => Ok(8),
+        "1 samuel" => Ok(9),
+        "2 samuel" => Ok(10),
+        "1 kings" => Ok(11),
+        "2 kings" => Ok(12),
+        "1 chronicles" => Ok(13),
+        "2 chronicles" => Ok(14),
+        "ezra" => Ok(15),
+        "nehemiah" => Ok(16),
+        "esther" => Ok(17),
+        "job" => Ok(18),
+        "psalm" | "psalms" => Ok(19),
+        "proverbs" => Ok(20),
+        "ecclesiastes" => Ok(21),
+        "song of songs" | "song of solomon" => Ok(22),
+        "isaiah" => Ok(23),
+        "jeremiah" => Ok(24),
+        "lamentations" => Ok(25),
+        "ezekiel" => Ok(26),
+        "daniel" => Ok(27),
+        "hosea" => Ok(28),
+        "joel" => Ok(29),
+        "amos" => Ok(30),
+        "obadiah" => Ok(31),
+        "jonah" => Ok(32),
+        "micah" => Ok(33),
+        "nahum" => Ok(34),
+        "habakkuk" => Ok(35),
+        "zephaniah" => Ok(36),
+        "haggai" => Ok(37),
+        "zechariah" => Ok(38),
+        "malachi" => Ok(39),
+        "matthew" => Ok(40),
+        "mark" => Ok(41),
+        "luke" => Ok(42),
+        "john" => Ok(43),
+        "acts" => Ok(44),
+        "romans" => Ok(45),
+        "1 corinthians" => Ok(46),
+        "2 corinthians" => Ok(47),
+        "galatians" => Ok(48),
+        "ephesians" => Ok(49),
+        "philippians" => Ok(50),
+        "colossians" => Ok(51),
+        "1 thessalonians" => Ok(52),
+        "2 thessalonians" => Ok(53),
+        "1 timothy" => Ok(54),
+        "2 timothy" => Ok(55),
+        "titus" => Ok(56),
+        "philemon" => Ok(57),
+        "hebrews" => Ok(58),
+        "james" => Ok(59),
+        "1 peter" => Ok(60),
+        "2 peter" => Ok(61),
+        "1 john" => Ok(62),
+        "2 john" => Ok(63),
+        "3 john" => Ok(64),
+        "jude" => Ok(65),
+        "revelation" => Ok(66),
+        _ => Err(anyhow!("Unknown book {name}")),
     }
 }
 
-pub fn id_to_book(id: u8) -> &'static str {
+///
+/// # Errors
+/// - Will return an error if an ID outside the valid range is provided
+///
+pub fn id_to_book(id: u8) -> anyhow::Result<&'static str> {
     match id {
-        1 => "Genesis",
-        2 => "Exodus",
-        3 => "Leviticus",
-        4 => "Numbers",
-        5 => "Deuteronomy",
-        6 => "Joshua",
-        7 => "Judges",
-        8 => "Ruth",
-        9 => "1 Samuel",
-        10 => "2 Samuel",
-        11 => "1 Kings",
-        12 => "2 Kings",
-        13 => "1 Chronicles",
-        14 => "2 Chronicles",
-        15 => "Ezra",
-        16 => "Nehemiah",
-        17 => "Esther",
-        18 => "Job",
-        19 => "Psalms",
-        20 => "Proverbs",
-        21 => "Ecclesiastes",
-        22 => "Song of Solomon",
-        23 => "Isaiah",
-        24 => "Jeremiah",
-        25 => "Lamentations",
-        26 => "Ezekiel",
-        27 => "Daniel",
-        28 => "Hosea",
-        29 => "Joel",
-        30 => "Amos",
-        31 => "Obadiah",
-        32 => "Jonah",
-        33 => "Micah",
-        34 => "Nahum",
-        35 => "Habakkuk",
-        36 => "Zephaniah",
-        37 => "Haggai",
-        38 => "Zechariah",
-        39 => "Malachi",
-        40 => "Matthew",
-        41 => "Mark",
-        42 => "Luke",
-        43 => "John",
-        44 => "Acts",
-        45 => "Romans",
-        46 => "1 Corinthians",
-        47 => "2 Corinthians",
-        48 => "Galatians",
-        49 => "Ephesians",
-        50 => "Philippians",
-        51 => "Colossians",
-        52 => "1 Thessalonians",
-        53 => "2 Thessalonians",
-        54 => "1 Timothy",
-        55 => "2 Timothy",
-        56 => "Titus",
-        57 => "Philemon",
-        58 => "Hebrews",
-        59 => "James",
-        60 => "1 Peter",
-        61 => "2 Peter",
-        62 => "1 John",
-        63 => "2 John",
-        64 => "3 John",
-        65 => "Jude",
-        66 => "Revelation",
-        _ => panic!("Unknown book id {id}"),
+        1 => Ok("Genesis"),
+        2 => Ok("Exodus"),
+        3 => Ok("Leviticus"),
+        4 => Ok("Numbers"),
+        5 => Ok("Deuteronomy"),
+        6 => Ok("Joshua"),
+        7 => Ok("Judges"),
+        8 => Ok("Ruth"),
+        9 => Ok("1 Samuel"),
+        10 => Ok("2 Samuel"),
+        11 => Ok("1 Kings"),
+        12 => Ok("2 Kings"),
+        13 => Ok("1 Chronicles"),
+        14 => Ok("2 Chronicles"),
+        15 => Ok("Ezra"),
+        16 => Ok("Nehemiah"),
+        17 => Ok("Esther"),
+        18 => Ok("Job"),
+        19 => Ok("Psalms"),
+        20 => Ok("Proverbs"),
+        21 => Ok("Ecclesiastes"),
+        22 => Ok("Song of Solomon"),
+        23 => Ok("Isaiah"),
+        24 => Ok("Jeremiah"),
+        25 => Ok("Lamentations"),
+        26 => Ok("Ezekiel"),
+        27 => Ok("Daniel"),
+        28 => Ok("Hosea"),
+        29 => Ok("Joel"),
+        30 => Ok("Amos"),
+        31 => Ok("Obadiah"),
+        32 => Ok("Jonah"),
+        33 => Ok("Micah"),
+        34 => Ok("Nahum"),
+        35 => Ok("Habakkuk"),
+        36 => Ok("Zephaniah"),
+        37 => Ok("Haggai"),
+        38 => Ok("Zechariah"),
+        39 => Ok("Malachi"),
+        40 => Ok("Matthew"),
+        41 => Ok("Mark"),
+        42 => Ok("Luke"),
+        43 => Ok("John"),
+        44 => Ok("Acts"),
+        45 => Ok("Romans"),
+        46 => Ok("1 Corinthians"),
+        47 => Ok("2 Corinthians"),
+        48 => Ok("Galatians"),
+        49 => Ok("Ephesians"),
+        50 => Ok("Philippians"),
+        51 => Ok("Colossians"),
+        52 => Ok("1 Thessalonians"),
+        53 => Ok("2 Thessalonians"),
+        54 => Ok("1 Timothy"),
+        55 => Ok("2 Timothy"),
+        56 => Ok("Titus"),
+        57 => Ok("Philemon"),
+        58 => Ok("Hebrews"),
+        59 => Ok("James"),
+        60 => Ok("1 Peter"),
+        61 => Ok("2 Peter"),
+        62 => Ok("1 John"),
+        63 => Ok("2 John"),
+        64 => Ok("3 John"),
+        65 => Ok("Jude"),
+        66 => Ok("Revelation"),
+        _ => Err(anyhow!("Unknown book id {id}")),
     }
 }
