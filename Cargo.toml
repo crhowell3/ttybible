@@ -1,6 +1,7 @@
 [package]
 name = "ttybible"
 version = "0.1.0"
+description = "terminal-based bible"
 authors = ["Cameron Howell <me@crhowell.com>"]
 edition = "2024"
 license = "MIT"
