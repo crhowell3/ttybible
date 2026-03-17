@@ -1,8 +1,11 @@
 use clap::Parser;
 
+use crate::VERSION_AND_GIT_HASH;
+
 #[derive(Parser, Debug)]
 #[clap(name = "bible")]
 #[command(
+    version = VERSION_AND_GIT_HASH,
     about = "terminal-based bible",
     author = "Cameron Howell <me@crhowell.com>",
     display_name = "ttybible",
@@ -20,10 +23,15 @@ pub struct Cli {
         default_value = "ESV"
     )]
     pub translation: String,
-    #[arg(required = true, num_args = 1.., help = "Book name")]
-    pub book: Vec<String>,
+
+    #[arg(num_args=1..=3, help = "Book name")]
+    pub book: Option<Vec<String>>,
+
     #[arg(help = "Chapter and verse(s)")]
-    pub reference: String,
+    pub reference: Option<String>,
+
+    #[arg(long, help = "Prints a random verse")]
+    pub random: bool,
 }
 
 pub struct ParsedReference {
